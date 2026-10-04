@@ -1,0 +1,125 @@
+<!doctype html>
+<html lang="en"><head><meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Phishing Email Detection &amp; Awareness Dashboard</title>
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"></script>
+<style>
+:root{--bg:#0f172a;--card:#1e293b;--tx:#e2e8f0;--mut:#94a3b8;--ac:#38bdf8;--ok:#22c55e;--lo:#eab308;--su:#f97316;--hi:#ef4444}
+*{box-sizing:border-box}body{margin:0;font-family:system-ui,Segoe UI,Arial;background:var(--bg);color:var(--tx)}
+header{padding:16px 24px;border-bottom:1px solid #334155;display:flex;gap:16px;align-items:center;flex-wrap:wrap}
+h1{font-size:18px;margin:0;flex:1}nav button{background:none;border:0;color:var(--mut);padding:8px 14px;cursor:pointer;font-size:14px;border-radius:6px}
+nav button.on{background:var(--card);color:var(--ac)}main{max-width:1100px;margin:auto;padding:20px}
+.card{background:var(--card);border-radius:10px;padding:16px;margin-bottom:16px}
+.grid{display:grid;gap:14px;grid-template-columns:repeat(auto-fit,minmax(170px,1fr))}
+.kpi b{display:block;font-size:26px}.kpi span{color:var(--mut);font-size:13px}
+input,textarea{width:100%;padding:9px;margin:4px 0 10px;background:#0b1220;color:var(--tx);border:1px solid #334155;border-radius:6px;font:inherit}
+textarea{min-height:140px}label{font-size:13px;color:var(--mut)}
+button.pri{background:var(--ac);color:#04283a;border:0;padding:10px 18px;border-radius:6px;font-weight:600;cursor:pointer}
+button.sec{background:#334155;color:var(--tx);border:0;padding:8px 12px;border-radius:6px;cursor:pointer;margin-right:6px}
+.badge{display:inline-block;padding:4px 12px;border-radius:99px;font-weight:700;color:#000}
+.SAFE{background:var(--ok)}.LOW{background:var(--lo)}.SUS{background:var(--su)}.HIGH{background:var(--hi);color:#fff}
+table{width:100%;border-collapse:collapse;font-size:14px}td,th{padding:8px;border-bottom:1px solid #334155;text-align:left}
+.hidden{display:none}.pill{font-size:12px;background:#334155;border-radius:4px;padding:2px 6px;margin-left:6px;color:var(--mut)}
+.charts{display:grid;gap:14px;grid-template-columns:repeat(auto-fit,minmax(300px,1fr))}
+</style></head><body>
+<header><h1>🛡️ Phishing Email Detection &amp; Awareness Dashboard
+<span class="pill">{{ 'Hybrid: Rules + ML' if ml_enabled else 'Rule-based (ML not trained)' }}</span></h1>
+<nav><button class="on" data-t="analyze">Analyze</button><button data-t="dash">Dashboard</button>
+<button data-t="hist">History</button><button data-t="learn">Awareness</button></nav></header>
+<main>
+<section id="analyze">
+ <div class="card">
+  <p style="color:var(--mut);font-size:13px;margin-top:0">Educational tool. Use only safe/sample emails. Links are never opened.</p>
+  <button class="sec" onclick="sample('legit')">Load legitimate sample</button>
+  <button class="sec" onclick="sample('phish')">Load phishing sample</button>
+  <label class="sec" style="display:inline-block">Upload .eml/.txt <input type="file" id="file" accept=".eml,.txt" style="display:none"></label>
+  <label>Sender</label><input id="sender" placeholder='"Name" <user@example.com>'>
+  <label>Subject</label><input id="subject">
+  <label>Body</label><textarea id="body"></textarea>
+  <label>Attachment filename (optional)</label><input id="attachment" placeholder="invoice.pdf.exe">
+  <button class="pri" onclick="analyze()">ANALYZE EMAIL</button>
+  <span id="err" style="color:var(--hi);margin-left:10px"></span>
+ </div>
+ <div id="result" class="card hidden"></div>
+</section>
+<section id="dash" class="hidden">
+ <div class="grid" id="kpis"></div><br>
+ <div class="charts">
+  <div class="card"><canvas id="c1"></canvas></div><div class="card"><canvas id="c2"></canvas></div>
+  <div class="card"><canvas id="c3"></canvas></div><div class="card"><canvas id="c4"></canvas></div>
+  <div class="card"><canvas id="c5"></canvas></div><div class="card"><canvas id="c6"></canvas></div>
+ </div>
+</section>
+<section id="hist" class="hidden"><div class="card">
+ <button class="sec" onclick="clearHist()">Clear history</button>
+ <table><thead><tr><th>Time</th><th>Sender</th><th>Subject</th><th>Score</th><th>Class</th></tr></thead><tbody id="hbody"></tbody></table></div></section>
+<section id="learn" class="hidden"><div class="card" id="tips"></div></section>
+</main>
+<script>
+const $=id=>document.getElementById(id);
+const cls=c=>c.startsWith('HIGH')?'HIGH':c.startsWith('SUS')?'SUS':c.startsWith('LOW')?'LOW':'SAFE';
+// Build elements with textContent only (prevents XSS from email content)
+function el(tag,text,className){const e=document.createElement(tag);if(text!==undefined)e.textContent=text;if(className)e.className=className;return e}
+const SAMPLES={
+ legit:{sender:'"Priya Sharma" <priya@university.example.edu>',subject:'Project update for week 12',
+  body:'Hi Sam,\n\nAttaching the notes from today\'s meeting. The demo is on Thursday at 3 PM in room 204.\nDetails: https://university.example.edu/course\n\nThanks,\nPriya',attachment:'notes.pdf'},
+ phish:{sender:'"PayPal Security" <support@paypa1-secure-login.example.xyz>',subject:'URGENT: Verify your account now!!!',
+  body:'Dear customer,\n\nWe detected unauthorized activity. Your account will be suspended within 24 hours.\nVerify your account and confirm your password immediately: http://198.51.100.7/secure/login/verify\n\n(FICTIONAL TRAINING SAMPLE - not a real link)',attachment:'invoice.pdf.exe'}};
+function sample(k){for(const f in SAMPLES[k])$(f).value=SAMPLES[k][f]}
+document.querySelectorAll('nav button').forEach(b=>b.onclick=()=>{
+ document.querySelectorAll('nav button').forEach(x=>x.classList.toggle('on',x===b));
+ ['analyze','dash','hist','learn'].forEach(s=>$(s).classList.toggle('hidden',s!==b.dataset.t));
+ if(b.dataset.t==='dash')loadStats(); if(b.dataset.t==='hist')loadHist();});
+$('file').onchange=async e=>{const fd=new FormData();fd.append('file',e.target.files[0]);
+ const r=await fetch('/api/parse-eml',{method:'POST',body:fd});const d=await r.json();
+ if(d.error){$('err').textContent=d.error;return}['sender','subject','body'].forEach(k=>$(k).value=d[k])};
+async function analyze(){
+ $('err').textContent='';
+ const payload={sender:$('sender').value,subject:$('subject').value,body:$('body').value,attachment:$('attachment').value};
+ const r=await fetch('/api/analyze',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(payload)});
+ const d=await r.json(); if(d.error){$('err').textContent=d.error;return}
+ const box=$('result');box.classList.remove('hidden');box.replaceChildren();
+ const top=el('div');top.append(el('span',d.classification,'badge '+cls(d.classification)),
+   el('span','  Risk score: '+d.risk_score+'/100'+(d.ml_probability!==null?`  (rules ${d.rule_score}, ML ${(d.ml_probability*100).toFixed(0)}%)`:'')));
+ box.append(top,el('p',d.explanation));
+ box.append(el('h3','Detected indicators'));
+ if(!d.indicators.length)box.append(el('p','None found.'));
+ const t=el('table');d.indicators.forEach(i=>{const tr=el('tr');tr.append(el('td',i.source),el('td',i.indicator),el('td',i.detail),el('td','+'+i.points));t.append(tr)});box.append(t);
+ box.append(el('h3','URL analysis'));
+ if(!d.urls.length)box.append(el('p','No URLs found.'));
+ d.urls.forEach(u=>box.append(el('p',u.url+'  → '+(u.findings.map(f=>f.indicator).join(', ')||'no issues'))));
+ box.append(el('h3','Sender analysis'));
+ box.append(el('p','Domain: '+(d.sender.domain||'invalid')+' — '+(d.sender.findings.map(f=>f.indicator).join(', ')||'no issues')));
+ box.append(el('h3','Recommended actions'));const ul=el('ul');d.recommendations.forEach(x=>ul.append(el('li',x)));box.append(ul);
+}
+async function loadHist(){const d=await (await fetch('/api/history')).json();const b=$('hbody');b.replaceChildren();
+ d.forEach(r=>{const tr=el('tr');const td=el('td');td.append(el('span',r.classification,'badge '+cls(r.classification)));
+  tr.append(el('td',r.created_at),el('td',r.sender),el('td',r.subject),el('td',r.risk_score),td);b.append(tr)})}
+async function clearHist(){await fetch('/api/history',{method:'DELETE'});loadHist()}
+let charts=[];
+function mk(id,type,labels,data,title,colors){const c=new Chart($(id),{type,data:{labels,datasets:[{data,backgroundColor:colors||'#38bdf8',borderColor:'#38bdf8'}]},
+ options:{plugins:{title:{display:true,text:title,color:'#e2e8f0'},legend:{display:type==='doughnut',labels:{color:'#e2e8f0'}}},
+ scales:type==='doughnut'?{}:{x:{ticks:{color:'#94a3b8'}},y:{ticks:{color:'#94a3b8'},beginAtZero:true}}}});charts.push(c)}
+async function loadStats(){
+ const s=await (await fetch('/api/stats')).json();charts.forEach(c=>c.destroy());charts=[];
+ const k=$('kpis');k.replaceChildren();
+ [['Total analyzed',s.total],['Likely phishing',s.high_risk],['Suspicious',s.suspicious],['Low risk',s.low_risk],['Average risk',s.avg_score]].forEach(([n,v])=>{
+  const d=el('div',undefined,'card kpi');d.append(el('b',v),el('span',n));k.append(d)});
+ mk('c1','doughnut',['Safe','Low','Suspicious','High'],[s.safe,s.low_risk,s.suspicious,s.high_risk],'Classification distribution',['#22c55e','#eab308','#f97316','#ef4444']);
+ mk('c2','doughnut',['Flagged','Not flagged'],[s.phishing_vs_legit.flagged,s.phishing_vs_legit.not_flagged],'Phishing vs legitimate',['#ef4444','#22c55e']);
+ mk('c3','bar',s.top_indicators.map(x=>x[0]),s.top_indicators.map(x=>x[1]),'Top detected indicators');
+ mk('c4','bar',['0-19','20-39','40-59','60-79','80-100'],s.score_buckets,'Risk score distribution');
+ mk('c5','line',s.trend.map(x=>x[0]),s.trend.map(x=>x[1]),'Detection trend (per day)');
+ mk('c6','bar',s.top_keywords.map(x=>x[0]),s.top_keywords.map(x=>x[1]),'Common suspicious keywords');}
+const TIPS=[['Check the sender address','Look at the real domain, not just the display name.'],
+ ['Beware of urgency','"Act now" or "within 24 hours" is designed to stop you thinking.'],
+ ['Hover before you click','Preview the link; typed addresses beat clicking email links.'],
+ ['Never share credentials','Legitimate services do not ask for passwords by email.'],
+ ['Unexpected attachments','Treat .exe, .zip and macro files with extreme caution.'],
+ ['Generic greetings','"Dear customer" often means a mass-mailed message.'],
+ ['Unusual payment requests','Confirm gift-card/wire requests by phone or in person.'],
+ ['Threats and prizes','Fear and too-good-to-be-true offers are classic manipulation.'],
+ ['Use MFA','Multi-factor authentication limits damage if a password leaks.'],
+ ['Report it','Forward suspected phishing to your IT/security team, then delete it.']];
+TIPS.forEach(([h,p],i)=>{const d=el('div');d.append(el('h4',(i+1)+'. '+h),el('p',p));$('tips').append(d)});
+</script></body></html>
